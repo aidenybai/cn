@@ -988,6 +988,8 @@ export const createEngine = (
   let doorEpoch = 1
   let cache = Object.create(null)
   let prevCache = Object.create(null)
+  let cacheMap = new Map<string, string>()
+  let prevCacheMap = new Map<string, string>()
   let cacheCount = 0
   let doorMarks = 0
   // two-generation rotation: sightings survive mark pressure instead of
@@ -1042,6 +1044,41 @@ export const createEngine = (
     }
     return merged
   }
+  // same as mergeCached over Maps: JSC looks up a string key in a
+  // dictionary-mode object in ~21 ns and a fresh key in ~220 ns, where a Map
+  // takes 6 and 75 (V8 is the reverse, 5 vs 18 on a hit, so it keeps the
+  // dictionary above). Kept as a copy rather than an accessor layer, which
+  // cost V8 5% on every hit.
+  const mergeCachedMap = (input: string): string => {
+    let merged = cacheMap.get(input)
+    if (merged !== undefined) return merged
+    const hash = spanHash(input, 0, input.length)
+    const slot = (hash & (DOOR_SIZE - 1)) + doorBase
+    const wasSeen =
+      door[slot] === (hash ^ doorEpoch) ||
+      door[slot ^ DOOR_SIZE] === (hash ^ (doorEpoch - 1))
+    if (wasSeen) {
+      merged = prevCacheMap.get(input)
+      if (merged !== undefined) {
+        cacheMap.set(input, merged) // promote
+        return merged
+      }
+    }
+    merged = mergeClassList(input)
+    if (wasSeen) {
+      cacheMap.set(input, merged)
+      if (++cacheCount > cacheSize) {
+        cacheCount = 0
+        prevCacheMap = cacheMap
+        cacheMap = new Map()
+        rotateDoor()
+      }
+    } else {
+      door[slot] = hash ^ doorEpoch
+      if (++doorMarks > DOOR_SIZE) rotateDoor()
+    }
+    return merged
+  }
   // a string that was just built cannot be cached by identity, and a
   // never-seen key is the expensive dictionary case (V8 hashes and
   // internalizes it: ~200 ns at 17 chars, ~1.1 µs at 360). The doorkeeper
@@ -1069,8 +1106,8 @@ export const createEngine = (
       ? mergeClassList
       : IS_JSC
         ? (input: string): string => {
-            const merged = cache[input]
-            return merged !== undefined ? merged : mergeCached(input)
+            const merged = cacheMap.get(input)
+            return merged !== undefined ? merged : mergeCachedMap(input)
           }
         : mergeCached
 
