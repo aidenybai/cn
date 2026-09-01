@@ -61,8 +61,12 @@ for (const r of rows)
 //      headline reproducible and fix a 6-15× real-repo corpus regression.
 //      Vs cnfast 0.2.0 gzip is ~25% under, so this band is currently slack;
 //      the absolute budget below is the binding constraint
-//   3. absolute transfer budget: 10,550 B (creep tripwire); raised from
-//      10,500 on 2026-09-01 for the int32 epoch guard (~20 B)
+//   3. absolute transfer budget: 10,650 B (creep tripwire); raised from
+//      10,500 on 2026-09-01 for the int32 epoch guard (~20 B), and to
+//      10,650 the same day for routing object/array args through the arg
+//      cache, the lone-array arg path, and the JSC-only thin cache front
+//      (~85 B on CI's zlib; 0.34x object args, 0.10x lone arrays, 0.62x
+//      recurring strings on bun)
 const ours = rows[0]
 const cnfast = rows[4]
 let fail = false
@@ -78,13 +82,13 @@ if (ours.gz > cnfast.gz * 1.08) {
   )
   fail = true
 }
-if (ours.gz > 10550) {
-  console.error(`SIZE GATE FAIL (budget): cn ${ours.gz} > 10550`)
+if (ours.gz > 10650) {
+  console.error(`SIZE GATE FAIL (budget): cn ${ours.gz} > 10650`)
   fail = true
 }
 if (fail) process.exit(1)
 console.log(
-  `size gate ok: parse ${ours.min} < ${cnfast.min}; gzip ${ours.gz} (cnfast ${cnfast.gz}, band ${Math.round(cnfast.gz * 1.08)}); budget 10550`
+  `size gate ok: parse ${ours.min} < ${cnfast.min}; gzip ${ours.gz} (cnfast ${cnfast.gz}, band ${Math.round(cnfast.gz * 1.08)}); budget 10650`
 )
 
 // ---------------------------------------------------------------------------
